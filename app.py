@@ -12,12 +12,27 @@ class CatalogAssistant:
     def __init__(self):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         if not self.openai_api_key:
-            st.error("Please set your OpenAI API key in the .env file")
-            st.stop()
-        
-        # Initialize OpenAI client
-        openai.api_key = self.openai_api_key
-        self.client = openai.OpenAI(api_key=self.openai_api_key)
+            st.error("🔑 OpenAI API key not found!")
+            st.markdown("""
+            **To use the AI features, please:**
+            1. Copy `.env.example` to `.env`
+            2. Add your OpenAI API key to the `.env` file
+            3. Restart the application
+            
+            **For now, you can still browse the catalog below.**
+            """)
+            st.info("💡 You can get an OpenAI API key from: https://platform.openai.com/api-keys")
+            self.openai_available = False
+            self.client = None
+        else:
+            # Initialize OpenAI client
+            try:
+                self.client = openai.OpenAI(api_key=self.openai_api_key)
+                self.openai_available = True
+            except Exception as e:
+                st.error(f"❌ Failed to initialize OpenAI client: {str(e)}")
+                self.openai_available = False
+                self.client = None
         
         # Load product catalog
         self.catalog = self.load_catalog()
@@ -35,6 +50,10 @@ class CatalogAssistant:
         """
         Use OpenAI to analyze the user query and recommend products
         """
+        if not self.openai_available:
+            st.error("❌ OpenAI is not available. Please configure your API key.")
+            return []
+        
         # Create a prompt that includes the catalog and user query
         catalog_text = self.catalog.to_string(index=False)
         
@@ -95,11 +114,13 @@ Focus on products that truly match the user's criteria. If they mention a budget
                 return result.get("recommendations", [])
             except (json.JSONDecodeError, ValueError):
                 # If JSON parsing fails, return a fallback response
-                st.error("Failed to parse AI response. Please try a different query.")
+                st.error("❌ Failed to parse AI response. Please try a different query.")
+                st.info("💡 This might be due to rate limits or API issues.")
                 return []
                 
         except Exception as e:
-            st.error(f"Error calling OpenAI API: {str(e)}")
+            st.error(f"❌ Error calling OpenAI API: {str(e)}")
+            st.info("💡 Please check your API key and internet connection.")
             return []
     
     def display_recommendations(self, recommendations):
@@ -173,9 +194,12 @@ def main():
         search_button = st.button("🔍 Search", type="primary")
     
     if search_button and user_query:
-        with st.spinner("Searching for products..."):
-            recommendations = assistant.search_products(user_query)
-            assistant.display_recommendations(recommendations)
+        if not assistant.openai_available:
+            st.warning("⚠️ OpenAI is not configured. Please add your API key to use AI search features.")
+        else:
+            with st.spinner("🤖 AI is analyzing your request..."):
+                recommendations = assistant.search_products(user_query)
+                assistant.display_recommendations(recommendations)
     
     elif search_button and not user_query:
         st.warning("Please enter a search query.")
